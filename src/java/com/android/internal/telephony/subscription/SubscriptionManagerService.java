@@ -3159,8 +3159,9 @@ public class SubscriptionManagerService extends ISub.Stub {
         final long token = Binder.clearCallingIdentity();
         try {
             if (mDefaultDataSubId.set(subId)) {
-                remapRafIfApplicable();
-
+                if (isFlexMapSupportNeeded()) {
+                    remapRafIfApplicable();
+                }
                 MultiSimSettingController.getInstance().notifyDefaultDataSubChanged();
 
                 broadcastSubId(TelephonyIntents.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED,
@@ -3171,6 +3172,10 @@ public class SubscriptionManagerService extends ISub.Stub {
         } finally {
             Binder.restoreCallingIdentity(token);
         }
+    }
+
+    public boolean isFlexMapSupportNeeded() {
+        return false;
     }
 
     /**

@@ -353,7 +353,7 @@ public class ServiceStateTracker extends Handler {
 
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
     private SubscriptionManager mSubscriptionManager;
-    private SubscriptionManagerService mSubscriptionManagerService;
+    protected SubscriptionManagerService mSubscriptionManagerService;
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
     private final SstSubscriptionsChangedListener mOnSubscriptionsChangedListener =
         new SstSubscriptionsChangedListener();
@@ -370,7 +370,7 @@ public class ServiceStateTracker extends Handler {
     private final LocalLog mCdnrLogs = new LocalLog(64);
 
     private Pattern mOperatorNameStringPattern;
-    private PersistableBundle mCarrierConfig;
+    protected PersistableBundle mCarrierConfig;
 
     private class SstSubscriptionsChangedListener extends OnSubscriptionsChangedListener {
 
@@ -2784,7 +2784,7 @@ public class ServiceStateTracker extends Handler {
         }
     }
 
-    private void notifySpnDisplayUpdate(CarrierDisplayNameData data) {
+    protected void notifySpnDisplayUpdate(CarrierDisplayNameData data) {
         int subId = mPhone.getSubId();
         // Update ACTION_SERVICE_PROVIDERS_UPDATED if any value changes
         if (mSubId != subId
