@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package com.android.internal.telephony.data;
 
 import android.annotation.ElapsedRealtimeLong;
@@ -196,6 +201,23 @@ public class TelephonyNetworkRequest {
     /** Feature flag. */
     @NonNull
     private final FeatureFlags mFeatureFlags;
+
+    // Indicate if it is sent from TNF
+    private boolean mIsOnCellular = true;
+
+    /**
+     * Constructor
+     *
+     * @param request The native network request from the clients.
+     * @param phone The phone instance
+     * @param featureFlags The feature flag
+     * @param isCellular if honored by cellular TNF
+     */
+    public TelephonyNetworkRequest(@NonNull NetworkRequest request, @NonNull Phone phone,
+                                   @NonNull FeatureFlags featureFlags, boolean isCellular) {
+        this(request, phone, featureFlags);
+        mIsOnCellular = isCellular;
+    }
 
     /**
      * Constructor
@@ -578,12 +600,13 @@ public class TelephonyNetworkRequest {
         if (o == null || getClass() != o.getClass()) return false;
         TelephonyNetworkRequest that = (TelephonyNetworkRequest) o;
         // Only compare the native network request.
-        return mNativeNetworkRequest.equals(that.mNativeNetworkRequest);
+        return mNativeNetworkRequest.equals(that.mNativeNetworkRequest)
+                && mIsOnCellular == that.mIsOnCellular;
     }
 
     @Override
     public int hashCode() {
         // Only use the native network request's hash code.
-        return mNativeNetworkRequest.hashCode();
+        return mNativeNetworkRequest.hashCode() * 31 + Boolean.hashCode(mIsOnCellular);
     }
 }

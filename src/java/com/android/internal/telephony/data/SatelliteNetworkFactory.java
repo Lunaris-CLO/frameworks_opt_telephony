@@ -15,7 +15,7 @@
  */
 
 /* Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -69,6 +69,7 @@ public class SatelliteNetworkFactory extends NetworkFactory {
     public static final int EVENT_SUBSCRIPTION_CHANGED              = 2;
     private static final int EVENT_NETWORK_REQUEST                  = 3;
     private static final int EVENT_NETWORK_RELEASE                  = 4;
+    private static final int EVENT_NETWORK_STATE_CHANGED            = 5;
 
     protected final PhoneSwitcher mPhoneSwitcher;
     private final LocalLog mLocalLog = new LocalLog(REQUEST_LOG_SIZE);
@@ -88,6 +89,9 @@ public class SatelliteNetworkFactory extends NetworkFactory {
 
     @NonNull
     private final FeatureFlags mFlags;
+    // When satellite network is available, send requests by SNF because satellite internet
+    // takes more precendence over cellular.
+    private boolean mIsSatelliteAvailable;
 
     /**
      * Constructor
@@ -124,6 +128,9 @@ public class SatelliteNetworkFactory extends NetworkFactory {
 
         mPhone.getContext().getSystemService(SubscriptionManager.class)
                 .addOnSubscriptionsChangedListener(subscriptionsChangedListener);
+        mIsSatelliteAvailable = mPhone.getServiceState().isUsingNonTerrestrialNetwork();
+        mPhone.getServiceStateTracker().registerForServiceStateChanged(mInternalHandler,
+                EVENT_NETWORK_STATE_CHANGED, mPhone.getPhoneId());
 
         register();
     }
@@ -196,6 +203,10 @@ public class SatelliteNetworkFactory extends NetworkFactory {
                     onReleaseNetworkFor(msg);
                     break;
                 }
+                case EVENT_NETWORK_STATE_CHANGED: {
+                    onNetworkStateChanged();
+                    break;
+                }
             }
         }
     }
@@ -234,12 +245,16 @@ public class SatelliteNetworkFactory extends NetworkFactory {
                     .setTransportPrimary(false).build());
         }
 
+        reapplyNetworkRequests();
+    }
+
+    private void reapplyNetworkRequests() {
         for (Map.Entry<TelephonyNetworkRequest, Integer> entry : mNetworkRequests.entrySet()) {
             TelephonyNetworkRequest networkRequest = entry.getKey();
             boolean applied = entry.getValue() != AccessNetworkConstants.TRANSPORT_TYPE_INVALID;
 
             boolean shouldApply = mPhoneSwitcher.shouldApplyNetworkRequest(
-                    networkRequest, mPhone.getPhoneId());
+                    networkRequest, mPhone.getPhoneId()) && mIsSatelliteAvailable;
 
             int action = getAction(applied, shouldApply);
             if (action == ACTION_NO_OP) continue;
@@ -280,15 +295,16 @@ public class SatelliteNetworkFactory extends NetworkFactory {
 
     private void onNeedNetworkFor(@NonNull Message msg) {
         TelephonyNetworkRequest networkRequest =
-                new TelephonyNetworkRequest((NetworkRequest) msg.obj, mPhone, mFlags);
+                new TelephonyNetworkRequest((NetworkRequest) msg.obj, mPhone, mFlags, false);
         boolean shouldApply = mPhoneSwitcher.shouldApplyNetworkRequest(
-                networkRequest, mPhone.getPhoneId());
+                networkRequest, mPhone.getPhoneId()) && mIsSatelliteAvailable;
 
         mNetworkRequests.put(networkRequest, shouldApply
                 ? getTransportTypeFromNetworkRequest(networkRequest)
                 : AccessNetworkConstants.TRANSPORT_TYPE_INVALID);
 
-        logl("onNeedNetworkFor " + networkRequest + " shouldApply " + shouldApply);
+        logl("onNeedNetworkFor " + networkRequest + " shouldApply " + shouldApply
+                + " mIsSatelliteAvailable " + mIsSatelliteAvailable);
 
         if (shouldApply) {
             NetworkRequestsStats.addNetworkRequest(networkRequest.getNativeNetworkRequest(),
@@ -306,7 +322,7 @@ public class SatelliteNetworkFactory extends NetworkFactory {
 
     private void onReleaseNetworkFor(@NonNull Message msg) {
         TelephonyNetworkRequest networkRequest =
-                new TelephonyNetworkRequest((NetworkRequest) msg.obj, mPhone, mFlags);
+                new TelephonyNetworkRequest((NetworkRequest) msg.obj, mPhone, mFlags, false);
         if (!mNetworkRequests.containsKey(networkRequest)) {
             return;
         }
@@ -319,6 +335,16 @@ public class SatelliteNetworkFactory extends NetworkFactory {
 
         if (applied) {
             mPhone.getDataNetworkController().removeNetworkRequest(networkRequest);
+        }
+    }
+
+    private void onNetworkStateChanged() {
+        final boolean isUsingNonTerrestrialNetwork = mPhone.getServiceState()
+                .isUsingNonTerrestrialNetwork();
+        if (mIsSatelliteAvailable != isUsingNonTerrestrialNetwork) {
+            mIsSatelliteAvailable = isUsingNonTerrestrialNetwork;
+            logl("onNetworkStateChanged " + " mIsSatelliteAvailable " + mIsSatelliteAvailable);
+            reapplyNetworkRequests();
         }
     }
 
@@ -341,6 +367,7 @@ public class SatelliteNetworkFactory extends NetworkFactory {
     public void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
         final IndentingPrintWriter pw = new IndentingPrintWriter(writer, "  ");
         pw.println("SatelliteNetworkFactory-" + mPhone.getPhoneId());
+        pw.println("mIsSatelliteAvailable: " + mIsSatelliteAvailable);
         pw.increaseIndent();
         pw.println("Network Requests:");
         pw.increaseIndent();
