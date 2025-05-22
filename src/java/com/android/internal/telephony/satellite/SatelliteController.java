@@ -1243,12 +1243,14 @@ public class SatelliteController extends Handler {
                         if (mNeedsSatellitePointing) {
                             mPointingAppController.removeListenerForPointingUI();
                         }
+                        boolean waitingForSatelliteModemOff = false;
                         synchronized (mSatelliteEnabledRequestLock) {
-                            if (!mWaitingForSatelliteModemOff) {
-                                moveSatelliteToOffStateAndCleanUpResources(
-                                        SATELLITE_RESULT_SUCCESS);
-                            }
+                            waitingForSatelliteModemOff = mWaitingForSatelliteModemOff;
                             mWaitingForDisableSatelliteModemResponse = false;
+                        }
+                        if (waitingForSatelliteModemOff) {
+                            moveSatelliteToOffStateAndCleanUpResources(
+                                    SATELLITE_RESULT_SUCCESS);
                         }
                     }
                     // Request NTN signal strength report when satellite enabled or disabled done.
@@ -4393,16 +4395,7 @@ public class SatelliteController extends Handler {
         plogd("handleEventSatelliteModemStateChanged: state=" + state);
         if (state == SatelliteManager.SATELLITE_MODEM_STATE_UNAVAILABLE
                 || state == SatelliteManager.SATELLITE_MODEM_STATE_OFF) {
-            synchronized (mSatelliteEnabledRequestLock) {
-                if (!mWaitingForDisableSatelliteModemResponse) {
-                    moveSatelliteToOffStateAndCleanUpResources(
-                            SATELLITE_RESULT_SUCCESS);
-                } else {
-                    notifyModemStateChangedToSessionController(
-                            SatelliteManager.SATELLITE_MODEM_STATE_OFF);
-                }
-                mWaitingForSatelliteModemOff = false;
-            }
+            handleSatelliteModemStateUnavailable();
         } else {
             if (isSatelliteEnabledOrBeingEnabled() || isSatelliteBeingDisabled()) {
                 notifyModemStateChangedToSessionController(state);
@@ -4419,6 +4412,20 @@ public class SatelliteController extends Handler {
                     sendRequestAsync(CMD_SET_SATELLITE_ENABLED, mSatelliteDisabledRequest, null);
                 }
             }
+        }
+    }
+
+    private void handleSatelliteModemStateUnavailable() {
+        boolean waitingForDisableSatelliteModemResponse = false;
+        synchronized (mSatelliteEnabledRequestLock) {
+            waitingForDisableSatelliteModemResponse = mWaitingForDisableSatelliteModemResponse;
+            mWaitingForSatelliteModemOff = false;
+        }
+        if (!waitingForDisableSatelliteModemResponse) {
+            moveSatelliteToOffStateAndCleanUpResources(SATELLITE_RESULT_SUCCESS);
+        } else {
+            notifyModemStateChangedToSessionController(
+                    SatelliteManager.SATELLITE_MODEM_STATE_OFF);
         }
     }
 
@@ -4726,15 +4733,15 @@ public class SatelliteController extends Handler {
             mIsSatelliteEnabled = false;
             setSettingsKeyForSatelliteMode(SATELLITE_MODE_ENABLED_FALSE);
             setSettingsKeyToAllowDeviceRotation(SATELLITE_MODE_ENABLED_FALSE);
-            abortSatelliteDisableRequest(resultCode);
-            abortSatelliteEnableRequest(resultCode);
-            abortSatelliteEnableAttributesUpdateRequest(resultCode);
-            resetSatelliteEnabledRequest();
-            resetSatelliteDisabledRequest();
-            // TODO (b/361139260): Stop timer to wait for other radios off
-            updateSatelliteEnabledState(
-                    false, "moveSatelliteToOffStateAndCleanUpResources");
         }
+        abortSatelliteDisableRequest(resultCode);
+        abortSatelliteEnableRequest(resultCode);
+        abortSatelliteEnableAttributesUpdateRequest(resultCode);
+        resetSatelliteEnabledRequest();
+        resetSatelliteDisabledRequest();
+        // TODO (b/361139260): Stop timer to wait for other radios off
+        updateSatelliteEnabledState(
+                false, "moveSatelliteToOffStateAndCleanUpResources");
         selectBindingSatelliteSubscription();
         synchronized (mSatellitePhoneLock) {
             updateLastNotifiedNtnModeAndNotify(mSatellitePhone);
